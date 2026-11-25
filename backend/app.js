@@ -8,6 +8,7 @@ import {
   DB_FILE,
   DEFAULT_VERIFIER,
   ENABLE_TEST_EMAIL,
+  IS_VERCEL,
   PINATA_JWT,
   SOLANA_NETWORK,
   inspectEscrowKeypair,
@@ -73,6 +74,9 @@ export function createApp(deps = {}) {
 
   const app = express();
   app.disable("x-powered-by");
+  if (IS_VERCEL || process.env.TRUST_PROXY === "true") {
+    app.set("trust proxy", 1);
+  }
 
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -86,19 +90,33 @@ export function createApp(deps = {}) {
   const localDevOriginRe = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/;
 
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (
-          !origin ||
-          ALLOWED_ORIGINS.includes(origin) ||
-          (process.env.NODE_ENV !== "production" && localDevOriginRe.test(origin))
-        ) {
-          return callback(null, true);
+    cors((req, callback) => {
+      const origin = req.header("origin");
+      const reqHost = req.header("host");
+
+      let sameHost = false;
+      if (origin && reqHost) {
+        try {
+          sameHost = new URL(origin).host === reqHost;
+        } catch {
+          sameHost = false;
         }
-        return callback(new Error("Origin not allowed by CORS"));
-      },
-      methods: ["GET", "POST"],
-      allowedHeaders: ["Content-Type", "Authorization"],
+      }
+
+      if (
+        !origin ||
+        sameHost ||
+        ALLOWED_ORIGINS.includes(origin) ||
+        (process.env.NODE_ENV !== "production" && localDevOriginRe.test(origin))
+      ) {
+        return callback(null, {
+          origin: true,
+          methods: ["GET", "POST"],
+          allowedHeaders: ["Content-Type", "Authorization"],
+        });
+      }
+
+      return callback(new Error("Origin not allowed by CORS"));
     })
   );
 
@@ -109,7 +127,7 @@ export function createApp(deps = {}) {
 
   /* ---------------- HEALTH ---------------- */
 
-  app.get("/", (_req, res) => {
+  app.get(["/", "/api"], (_req, res) => {
     res.json({
       ok: true,
       service: "Life Admin AI Backend",

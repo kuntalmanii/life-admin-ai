@@ -1,7 +1,8 @@
 import { clusterApiUrl } from "@solana/web3.js";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3001";
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? "" : "http://localhost:3001");
 
 export const SOLANA_NETWORK =
   import.meta.env.VITE_SOLANA_NETWORK || "testnet";

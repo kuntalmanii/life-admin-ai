@@ -108,6 +108,11 @@ npm run dev
 
 Starts both the Vite frontend (`http://localhost:5173`) and the Express backend (`http://localhost:3001`) concurrently.
 
+### 4. Deploy to Vercel (Full Stack)
+
+- Root [vercel.json](vercel.json) routes `/api/*` requests to [api/index.js](api/index.js), and production builds leave `API_BASE_URL` same-origin when `VITE_API_URL` is unset.
+- Set `PINATA_JWT` and `AUTH_SECRET` (plus optional `GEMINI_API_KEY`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASS`) in **Vercel → Project Settings → Environment Variables**, then redeploy. On Vercel Serverless, storage automatically uses writable temporary JSON unless `VITE_API_URL` points to an external persistent backend.
+
 ---
 
 ## Scripts

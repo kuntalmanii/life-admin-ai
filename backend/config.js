@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import dotenv from "dotenv";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clusterApiUrl } from "@solana/web3.js";
@@ -10,9 +11,12 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, ".env") });
 
+export const IS_VERCEL = Boolean(process.env.VERCEL);
 export const PORT = Number(process.env.PORT) || 3001;
 export const DB_FILE = process.env.DB_FILE
   ? path.resolve(process.env.DB_FILE)
+  : IS_VERCEL
+  ? path.join(os.tmpdir(), "life-admin-db.json")
   : path.join(__dirname, "db.sqlite");
 export const DEFAULT_VERIFIER =
   process.env.DEFAULT_VERIFIER || "FBuJ9xHqG4tATW5wKJAn1uRKpM4WujNtKfA25CzXNBhy";
@@ -35,13 +39,19 @@ export const ENABLE_TEST_EMAIL = process.env.ENABLE_TEST_EMAIL === "true";
 export const AUTH_SECRET =
   process.env.AUTH_SECRET || crypto.randomBytes(32).toString("hex");
 
-export const ALLOWED_ORIGINS = (
-  process.env.ALLOWED_ORIGINS ||
-  `${APP_URL},http://localhost:5173,http://127.0.0.1:5173`
-)
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+export const ALLOWED_ORIGINS = [
+  ...(
+    process.env.ALLOWED_ORIGINS ||
+    `${APP_URL},http://localhost:5173,http://127.0.0.1:5173`
+  )
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean),
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+  ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
+    : []),
+];
 
 export function inspectEscrowKeypair() {
   try {

@@ -1,8 +1,18 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { DB_FILE } from "./config.js";
+
+const require = createRequire(import.meta.url);
+let cachedSqliteCtor = null;
+
+function loadDatabaseSync() {
+  if (!cachedSqliteCtor) {
+    cachedSqliteCtor = require("node:sqlite").DatabaseSync;
+  }
+  return cachedSqliteCtor;
+}
 
 /**
  * Unified commitment repository supporting:
@@ -82,6 +92,7 @@ function getSqlite(resolvedPath) {
   }
 
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+  const DatabaseSync = loadDatabaseSync();
   const sqlite = new DatabaseSync(resolvedPath);
   sqlite.exec("PRAGMA journal_mode = WAL;");
   sqlite.exec("PRAGMA synchronous = NORMAL;");

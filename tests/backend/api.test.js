@@ -324,4 +324,26 @@ describe("Backend API Integration", () => {
       });
     expect(badRecoveryStake.status).toBe(400);
   });
+
+  it("allows same-host deployment origins (such as Vercel previews) and loads api/index.js cleanly", async () => {
+    const previewRes = await request(app)
+      .post("/api/auth/challenge")
+      .set("Host", "life-admin-preview-123.vercel.app")
+      .set("Origin", "https://life-admin-preview-123.vercel.app")
+      .send({ wallet: userKp.publicKey.toBase58() });
+    expect(previewRes.status).toBe(200);
+
+    const { default: vercelHandler } = await import("../../api/index.js");
+    const healthRes = await request(vercelHandler).get("/api/");
+    expect(healthRes.status).toBe(200);
+    expect(healthRes.body.ok).toBe(true);
+
+    const chRes = await request(vercelHandler)
+      .post("/api/auth/challenge")
+      .set("Host", "life-admin-preview-123.vercel.app")
+      .set("Origin", "https://life-admin-preview-123.vercel.app")
+      .send({ wallet: userKp.publicKey.toBase58() });
+    expect(chRes.status).toBe(200);
+    expect(chRes.body.nonce).toBeTruthy();
+  });
 });

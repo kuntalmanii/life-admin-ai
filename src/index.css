@@ -28,6 +28,16 @@
     color: var(--text);
     overflow-x: hidden;
   }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill {
+    -webkit-text-fill-color: #f1f5f9;
+    -webkit-box-shadow: 0 0 0 1000px #141c30 inset;
+    caret-color: #f1f5f9;
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
