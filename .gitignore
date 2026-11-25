@@ -32,4 +32,6 @@ escrow.json
 backend/.env
 !backend/.env.example
 backend/db.json
+backend/db.sqlite*
+*.sqlite*
 *.tmp

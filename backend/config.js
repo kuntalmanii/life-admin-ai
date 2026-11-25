@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clusterApiUrl } from "@solana/web3.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,14 +11,19 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 export const PORT = Number(process.env.PORT) || 3001;
-export const DB_FILE = path.join(__dirname, "db.json");
+export const DB_FILE = process.env.DB_FILE
+  ? path.resolve(process.env.DB_FILE)
+  : path.join(__dirname, "db.sqlite");
 export const DEFAULT_VERIFIER =
   process.env.DEFAULT_VERIFIER || "FBuJ9xHqG4tATW5wKJAn1uRKpM4WujNtKfA25CzXNBhy";
 export const APP_URL =
   process.env.APP_URL || "https://life-admin-ai-five.vercel.app";
 export const SOLANA_NETWORK = process.env.SOLANA_NETWORK || "testnet";
-export const ESCROW_KEYPAIR_PATH =
-  process.env.ESCROW_KEYPAIR_PATH || path.resolve(process.cwd(), "escrow.json");
+export const SOLANA_RPC_URL =
+  process.env.SOLANA_RPC_URL || clusterApiUrl(SOLANA_NETWORK);
+export const ESCROW_KEYPAIR_PATH = process.env.ESCROW_KEYPAIR_PATH
+  ? path.resolve(process.env.ESCROW_KEYPAIR_PATH)
+  : path.resolve(__dirname, "..", "escrow.json");
 
 export const PINATA_JWT = process.env.PINATA_JWT || "";
 export const ALLOW_SERVER_REFUND = process.env.ALLOW_SERVER_REFUND === "true";

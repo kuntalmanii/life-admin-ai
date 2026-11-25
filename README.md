@@ -1,49 +1,118 @@
-**Life Admin AI — Solana-Based Commitment & Accountability dApp**
+# Life Admin AI — Solana Commitment & Accountability dApp
 
-**Life Admin AI** is a Solana-powered blockchain dApp that helps users complete important tasks on time by adding real economic accountability. Users create task-based NFTs and stake SOL on their own commitments. If the task is completed before the deadline and valid proof is submitted, the staked SOL is refunded; if the task is missed or the proof is rejected, the stake is forfeited.
+**Life Admin AI** is a Solana-powered Web3 dApp that adds real economic accountability to personal commitments and recurring deadlines. Users stake SOL and mint an on-chain commitment NFT backed by immutable IPFS metadata. Completing the commitment and submitting proof before verification unlocks a SOL stake refund; missing the deadline or failing verification forfeits the stake.
 
-Each task is minted as an NFT containing immutable metadata such as the goal, deadline, stake amount, and verifier. The staked SOL is transferred to an admin (escrow) wallet at creation time, ensuring real financial consequences. Users submit proof through the NFT, which appears in a dedicated **Verification Dashboard** for manual review. The verifier can approve or reject the proof, triggering either a refund or forfeiture of the stake.
+---
 
-The system includes an automated **email reminder engine** that sends confirmation emails when a commitment is created and deadline-based reminders (e.g., 30 minutes before expiry). The architecture is designed to support future AI-assisted proof verification (image/video analysis) and DAO-based verification to remove centralized trust.
+## Key Features
 
-This project demonstrates real-world use of **Solana transactions, NFT minting, escrow-style staking, off-chain verification logic, and automated reminders,** and was built as a production-oriented dApp rather than a demo.
+- **Real SOL Staking & NFT Contracts:** Transfers staked SOL to the verifier/escrow address and mints a commitment NFT with IPFS metadata (`type: "commitment_v1"`).
+- **Wallet-Authenticated Backend (`Ed25519` + HMAC Sessions):** Challenge-response signature verification (`POST /api/auth/challenge` → `POST /api/auth/verify`) issues short-lived Bearer tokens scoped to the connected wallet.
+- **Server-Side IPFS Pinning Proxy:** Metadata and proof payloads are pinned via `POST /api/ipfs/pin` so `PINATA_JWT` never ships in the frontend bundle.
+- **On-Chain Verification:** Backend tracking (`POST /api/track`), proof recovery (`POST /api/proof`), and refund approvals (`POST /api/approve`) verify SOL transfers and NFT ownership on Solana.
+- **Verifier Dashboard:** Dedicated admin review UI for inspecting proof metadata and executing SOL refunds or stake forfeitures.
+- **Automated Email & iCal Reminders:** Confirmation emails with `.ics` calendar events on creation plus background deadline reminder checks (`30` min urgency window, `2` hour notification cooldown).
 
-**Key Features**
-Real SOL staking on commitments
-NFT-based task representation with immutable metadata
-Manual verification dashboard for proof approval/rejection
-Automated email reminders before deadlines
-Stake refund or forfeiture based on task outcome
-Designed for future AI-based proof verification
+---
 
-**Tech Stack**
-Solana (Testnet)
-Web3.js / Metaplex
-React + Wallet Adapter
-Node.js + Express
-IPFS (Pinata)
-Nodemailer (Email reminders)
+## Tech Stack
 
+- **Frontend:** React 19, Vite 7, Tailwind CSS 4, Framer Motion, React Three Fiber / Three.js (`React.lazy` code-split)
+- **Solana & Storage:** `@solana/web3.js`, Metaplex Umi (`@metaplex-foundation/umi`, `@metaplex-foundation/mpl-token-metadata`), Solana Wallet Adapter (`SolflareWalletAdapter`), Pinata IPFS
+- **Backend:** Node.js (built-in `node:sqlite` WAL storage + `node:crypto` Ed25519), Express 5, `nodemailer`
+- **Testing & Quality:** Vitest, Testing Library (`jsdom`), Supertest, ESLint
 
+---
 
+## Project Structure
 
+```text
+├── src/
+│   ├── components/       # UI views, forms, proof modal, verifier dashboard, toast
+│   ├── hooks/            # Commitment state & accessible modal hooks
+│   ├── services/         # Authenticated API client (challenge/sign/retry)
+│   ├── ipfs/             # IPFS upload helpers
+│   ├── solana/           # Singleton RPC connection, mint/stake creation, NFT fetch
+│   └── utils/            # Sorting/formatting helpers and cached IPFS JSON fetcher
+├── backend/
+│   ├── app.js            # Express app factory, routes, rate limits, security headers
+│   ├── auth.js           # Ed25519 challenge-verify & HMAC Bearer token validation
+│   ├── config.js         # Env loading, CORS origins, verifier/escrow inspection
+│   ├── db.js             # Write-through cached, queued atomic JSON storage
+│   ├── mailer.js         # Escaped HTML emails, CRLF-safe headers, iCal generator
+│   ├── reminderJob.js    # Scheduled reminder checker
+│   ├── solanaVerify.js   # On-chain SOL transfer & NFT ownership verification
+│   └── scripts/          # Standalone wallet/email utility scripts
+└── tests/                # Unit, component/a11y, reminder job, and API integration tests
+```
 
+---
 
+## Getting Started
 
+### 1. Install Dependencies
 
-# React + Vite
+```bash
+npm install --legacy-peer-deps
+```
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> `--legacy-peer-deps` is required due to upstream peer dependency ranges in Solana Wallet Adapter / Metaplex packages with React 19.
 
-Currently, two official plugins are available:
+### 2. Configure Environment Variables
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Copy both templates and fill in your credentials:
 
-## React Compiler
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend (`.env`):**
+  - `VITE_API_URL` — Backend URL (default `http://localhost:3001`)
+  - `VITE_SOLANA_NETWORK` — Solana cluster (`testnet`)
+  - `VITE_SOLANA_RPC_URL` — Optional custom Solana RPC endpoint (defaults to `clusterApiUrl(VITE_SOLANA_NETWORK)`)
+  - `VITE_VERIFIER_WALLET` — Public key of the verifier wallet receiving stakes & reviewing proofs
 
-## Expanding the ESLint configuration
+- **Backend (`backend/.env`):**
+  - `PINATA_JWT` — Pinata JWT used server-side by `POST /api/ipfs/pin`
+  - `AUTH_SECRET` — Long random secret used to sign Bearer session tokens (required in production so restarts do not invalidate sessions)
+  - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASS`, `EMAIL_FROM` — SMTP settings for reminders
+  - `APP_URL` & `ALLOWED_ORIGINS` — Frontend origin(s) permitted by CORS
+  - `DEFAULT_VERIFIER`, `SOLANA_NETWORK`, `SOLANA_RPC_URL`, `ESCROW_KEYPAIR_PATH`
+  - `DB_FILE` — Persistence path (default `./backend/db.sqlite` using built-in `node:sqlite` WAL mode with automatic one-time migration from `db.json`; `.json` paths also supported)
+  - `ALLOW_SERVER_REFUND=false` — Leave `false` when refunds are signed in-browser by the connected verifier wallet
+  - `ENABLE_TEST_EMAIL=false` — Keeps `/api/test-email` disabled in production
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 3. Run Locally
+
+```bash
+npm run dev
+```
+
+Starts both the Vite frontend (`http://localhost:5173`) and the Express backend (`http://localhost:3001`) concurrently.
+
+---
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Run Vite client and `--watch` Node backend together |
+| `npm run client` | Start Vite frontend dev server only |
+| `npm run server` | Start Express backend (`node --watch backend/index.js`) |
+| `npm test` | Run full Vitest suite (unit, backend integration, component & a11y) |
+| `npm run test:watch` | Run Vitest in watch mode |
+| `npm run lint` | Run ESLint across `src/`, `backend/`, and `tests/` |
+| `npm run build` | Build production frontend bundle to `dist/` |
+| `npm run preview` | Preview built `dist/` bundle locally |
+
+---
+
+## Security & Operational Notes
+
+- **Wallet Signatures & Ownership:** Creating/pinning commitments, viewing private tracked commitments, submitting proofs, and approving/rejecting tasks all require a valid wallet-signed Bearer token (`Authorization: Bearer <token>`).
+- **Escrow Keypair Alignment:** If `escrow.json` does not match `DEFAULT_VERIFIER` (or `ALLOW_SERVER_REFUND` is `false`), server-side automatic refunds stay disabled and verifier approvals must be signed in the UI by the connected `DEFAULT_VERIFIER` wallet.
+- **Production Readiness:** Before deploying to Mainnet, configure a persistent `AUTH_SECRET`, set a dedicated `SOLANA_RPC_URL` / `VITE_SOLANA_RPC_URL`, host `DB_FILE` (`db.sqlite`) on persistent storage (or swap to PostgreSQL for multi-instance serverless hosting), and consider migrating staking to an on-chain Anchor PDA escrow program.
+
+UV7RR3
+

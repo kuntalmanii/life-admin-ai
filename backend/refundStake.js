@@ -4,13 +4,12 @@ import {
   Transaction,
   SystemProgram,
   LAMPORTS_PER_SOL,
-  clusterApiUrl,
   PublicKey,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import fs from "fs";
 import path from "path";
-import { ESCROW_KEYPAIR_PATH, SOLANA_NETWORK } from "./config.js";
+import { ESCROW_KEYPAIR_PATH, SOLANA_RPC_URL } from "./config.js";
 
 /**
  * Transfers staked SOL from the backend escrow keypair back to the user's wallet.
@@ -18,7 +17,7 @@ import { ESCROW_KEYPAIR_PATH, SOLANA_NETWORK } from "./config.js";
 export const refundStake = async ({ toWallet, amountSol }) => {
   console.log(`Init Refund: ${amountSol} SOL -> ${toWallet}`);
 
-  const connection = new Connection(clusterApiUrl(SOLANA_NETWORK), "confirmed");
+  const connection = new Connection(SOLANA_RPC_URL, "confirmed");
   const keypairPath = path.resolve(ESCROW_KEYPAIR_PATH);
 
   if (!fs.existsSync(keypairPath)) {
@@ -32,7 +31,7 @@ export const refundStake = async ({ toWallet, amountSol }) => {
     SystemProgram.transfer({
       fromPubkey: escrowKeypair.publicKey,
       toPubkey: new PublicKey(toWallet),
-      lamports: Math.floor(Number(amountSol) * LAMPORTS_PER_SOL),
+      lamports: Math.round(Number(amountSol) * LAMPORTS_PER_SOL),
     })
   );
 

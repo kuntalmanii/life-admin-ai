@@ -1,21 +1,34 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import nacl from "tweetnacl";
 import { Keypair } from "@solana/web3.js";
 import { createApp } from "../../backend/app.js";
+
+const ED25519_PKCS8_PREFIX = Buffer.from(
+  "302e020100300506032b657004220420",
+  "hex"
+);
 
 async function authenticateWallet(app, keypair) {
   const wallet = keypair.publicKey.toBase58();
   const ch = await request(app).post("/api/auth/challenge").send({ wallet });
   expect(ch.status).toBe(200);
 
-  const sig = Buffer.from(
-    nacl.sign.detached(new TextEncoder().encode(ch.body.message), keypair.secretKey)
-  ).toString("base64");
+  const privateKey = crypto.createPrivateKey({
+    key: Buffer.concat([
+      ED25519_PKCS8_PREFIX,
+      Buffer.from(keypair.secretKey.slice(0, 32)),
+    ]),
+    format: "der",
+    type: "pkcs8",
+  });
+  const sig = crypto
+    .sign(null, Buffer.from(ch.body.message, "utf8"), privateKey)
+    .toString("base64");
 
   const vr = await request(app)
     .post("/api/auth/verify")

@@ -14,7 +14,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@metaplex-foundation/js": "^0.20.1",
+    "@metaplex-foundation/mpl-token-metadata": "^4.0.0",
+    "@metaplex-foundation/umi": "^1.6.0",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.6.0",
+    "@metaplex-foundation/umi-signer-wallet-adapters": "^1.6.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@solana/wallet-adapter-react": "^0.15.39",

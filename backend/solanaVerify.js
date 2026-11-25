@@ -3,12 +3,11 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
-  clusterApiUrl,
 } from "@solana/web3.js";
-import { SOLANA_NETWORK } from "./config.js";
+import { SOLANA_RPC_URL } from "./config.js";
 
 const SYSTEM_PROGRAM_ID = SystemProgram.programId.toBase58();
-const connection = new Connection(clusterApiUrl(SOLANA_NETWORK), "confirmed");
+const connection = new Connection(SOLANA_RPC_URL, "confirmed");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -4,14 +4,21 @@ import {
   Transaction,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
-import { Metaplex, walletAdapterIdentity } from "@metaplex-foundation/js";
-import { VERIFIER_WALLET } from "../config";
+import { generateSigner, percentAmount } from "@metaplex-foundation/umi";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
+import {
+  createNft,
+  mplTokenMetadata,
+} from "@metaplex-foundation/mpl-token-metadata";
+import { base58 } from "@metaplex-foundation/umi/serializers";
+import { SOLANA_RPC_URL, VERIFIER_WALLET } from "../config";
 import { getSolanaConnection } from "./connection";
 
 const ESCROW_PUBLIC_KEY = new PublicKey(VERIFIER_WALLET);
 
 /**
- * Transfers staked SOL to the escrow wallet and mints an on-chain commitment NFT.
+ * Transfers staked SOL to the escrow wallet and mints an on-chain commitment NFT via Metaplex Umi.
  */
 export async function createCommitment(wallet, metadataUri, stakeAmount) {
   if (!wallet?.publicKey) {
@@ -19,11 +26,7 @@ export async function createCommitment(wallet, metadataUri, stakeAmount) {
   }
 
   const connection = getSolanaConnection();
-  const metaplex = Metaplex.make(connection).use(
-    walletAdapterIdentity(wallet)
-  );
-
-  const lamports = Math.floor(parseFloat(stakeAmount) * LAMPORTS_PER_SOL);
+  const lamports = Math.round(parseFloat(stakeAmount) * LAMPORTS_PER_SOL);
   if (!Number.isFinite(lamports) || lamports <= 0) {
     throw new Error("Invalid stake amount");
   }
@@ -56,27 +59,32 @@ export async function createCommitment(wallet, metadataUri, stakeAmount) {
     throw new Error("Stake transfer failed. Transaction was not approved.");
   }
 
-  let nft;
-  let response;
+  let mint;
+  let nftSignature;
   try {
-    ({ nft, response } = await metaplex.nfts().create(
-      {
-        uri: metadataUri,
-        name: "Commitment Protocol Task",
-        symbol: "COMMIT",
-        sellerFeeBasisPoints: 0,
-        isMutable: true,
-      },
-      { commitment: "finalized" }
-    ));
+    const umi = createUmi(SOLANA_RPC_URL, "confirmed")
+      .use(mplTokenMetadata())
+      .use(walletAdapterIdentity(wallet));
+
+    mint = generateSigner(umi);
+    const { signature } = await createNft(umi, {
+      mint,
+      uri: metadataUri,
+      name: "Commitment Protocol Task",
+      symbol: "COMMIT",
+      sellerFeeBasisPoints: percentAmount(0),
+      isMutable: true,
+    }).sendAndConfirm(umi, { confirm: { commitment: "finalized" } });
+
+    [nftSignature] = base58.deserialize(signature);
   } catch (err) {
     console.error("NFT mint failed:", err);
     throw new Error("NFT minting failed");
   }
 
   return {
-    mintAddress: nft.address.toBase58(),
-    nftSignature: response.signature,
+    mintAddress: mint.publicKey.toString(),
+    nftSignature,
     stakeSignature,
     escrow: ESCROW_PUBLIC_KEY.toBase58(),
   };
