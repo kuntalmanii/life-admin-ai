@@ -20,6 +20,31 @@ export function clearWalletSession(walletAddress) {
   }
 }
 
+async function safeFetchJson(path, fetchOptions = {}, timeoutMs = 20_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error("Backend request timed out");
+    }
+    if (err instanceof TypeError || /failed to fetch/i.test(err?.message || "")) {
+      throw new Error(
+        `Cannot reach backend API (${API_BASE_URL}). Make sure the backend server is running and CORS allows this origin.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function ensureWalletSession(wallet) {
   const walletAddress = wallet?.publicKey?.toBase58?.();
   if (!walletAddress) {
@@ -40,12 +65,14 @@ export async function ensureWalletSession(wallet) {
       throw new Error("Connected wallet does not support message signing");
     }
 
-    const challengeRes = await fetch(`${API_BASE_URL}/api/auth/challenge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet: walletAddress }),
-    });
-    const challengeData = await challengeRes.json().catch(() => ({}));
+    const { res: challengeRes, data: challengeData } = await safeFetchJson(
+      "/api/auth/challenge",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletAddress }),
+      }
+    );
     if (!challengeRes.ok) {
       throw new Error(challengeData.error || "Failed to start wallet sign-in");
     }
@@ -53,16 +80,18 @@ export async function ensureWalletSession(wallet) {
     const messageBytes = new TextEncoder().encode(challengeData.message);
     const signatureBytes = await wallet.signMessage(messageBytes);
 
-    const verifyRes = await fetch(`${API_BASE_URL}/api/auth/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        wallet: walletAddress,
-        nonce: challengeData.nonce,
-        signature: bytesToBase64(signatureBytes),
-      }),
-    });
-    const verifyData = await verifyRes.json().catch(() => ({}));
+    const { res: verifyRes, data: verifyData } = await safeFetchJson(
+      "/api/auth/verify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: walletAddress,
+          nonce: challengeData.nonce,
+          signature: bytesToBase64(signatureBytes),
+        }),
+      }
+    );
     if (!verifyRes.ok) {
       throw new Error(verifyData.error || "Wallet signature verification failed");
     }
@@ -85,30 +114,19 @@ export async function ensureWalletSession(wallet) {
 async function request(path, options = {}, wallet = null) {
   const { timeoutMs = 20_000, headers: customHeaders, ...fetchOptions } = options;
 
-  const send = async (token) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(`${API_BASE_URL}${path}`, {
+  const send = (token) =>
+    safeFetchJson(
+      path,
+      {
         ...fetchOptions,
-        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...customHeaders,
         },
-      });
-      const data = await res.json().catch(() => ({}));
-      return { res, data };
-    } catch (err) {
-      if (err?.name === "AbortError") {
-        throw new Error("Request timed out");
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  };
+      },
+      timeoutMs
+    );
 
   let token = wallet ? await ensureWalletSession(wallet) : null;
   let { res, data } = await send(token);

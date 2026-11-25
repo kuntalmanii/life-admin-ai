@@ -39,12 +39,12 @@ export async function createCommitment(wallet, metadataUri, stakeAmount) {
     })
   );
 
-  const latestBlockhash = await connection.getLatestBlockhash("confirmed");
-  transferTx.feePayer = wallet.publicKey;
-  transferTx.recentBlockhash = latestBlockhash.blockhash;
-
   let stakeSignature;
   try {
+    const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+    transferTx.feePayer = wallet.publicKey;
+    transferTx.recentBlockhash = latestBlockhash.blockhash;
+
     stakeSignature = await wallet.sendTransaction(transferTx, connection);
     await connection.confirmTransaction(
       {
@@ -56,7 +56,11 @@ export async function createCommitment(wallet, metadataUri, stakeAmount) {
     );
   } catch (err) {
     console.error("Stake transfer failed:", err);
-    throw new Error("Stake transfer failed. Transaction was not approved.");
+    throw new Error(
+      err?.message && !/failed to fetch/i.test(err.message)
+        ? `Stake transfer failed: ${err.message}`
+        : `Stake transfer failed. Could not connect to Solana RPC (${SOLANA_RPC_URL}) or wallet rejected transaction.`
+    );
   }
 
   let mint;

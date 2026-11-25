@@ -83,10 +83,16 @@ export function createApp(deps = {}) {
     next();
   });
 
+  const localDevOriginRe = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/;
+
   app.use(
     cors({
       origin(origin, callback) {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        if (
+          !origin ||
+          ALLOWED_ORIGINS.includes(origin) ||
+          (process.env.NODE_ENV !== "production" && localDevOriginRe.test(origin))
+        ) {
           return callback(null, true);
         }
         return callback(new Error("Origin not allowed by CORS"));
