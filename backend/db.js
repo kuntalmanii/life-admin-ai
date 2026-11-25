@@ -9,7 +9,8 @@ let cachedSqliteCtor = null;
 
 function loadDatabaseSync() {
   if (!cachedSqliteCtor) {
-    cachedSqliteCtor = require("node:sqlite").DatabaseSync;
+    const sqliteModule = "node:" + "sqlite";
+    cachedSqliteCtor = require(sqliteModule).DatabaseSync;
   }
   return cachedSqliteCtor;
 }

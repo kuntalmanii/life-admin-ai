@@ -757,6 +757,12 @@ export function createApp(deps = {}) {
     })
   );
 
+  app.use((req, res) => {
+    res.status(404).json({
+      error: `Route not found: ${req.method} ${req.originalUrl || req.url}`,
+    });
+  });
+
   app.use((err, _req, res, _next) => {
     if (err?.message === "Origin not allowed by CORS") {
       return res.status(403).json({ error: err.message });

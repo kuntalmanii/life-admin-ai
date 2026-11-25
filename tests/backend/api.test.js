@@ -333,7 +333,7 @@ describe("Backend API Integration", () => {
       .send({ wallet: userKp.publicKey.toBase58() });
     expect(previewRes.status).toBe(200);
 
-    const { default: vercelHandler } = await import("../../api/index.js");
+    const { default: vercelHandler } = await import("../../api/[...route].js");
     const healthRes = await request(vercelHandler).get("/api/");
     expect(healthRes.status).toBe(200);
     expect(healthRes.body.ok).toBe(true);
@@ -345,5 +345,9 @@ describe("Backend API Integration", () => {
       .send({ wallet: userKp.publicKey.toBase58() });
     expect(chRes.status).toBe(200);
     expect(chRes.body.nonce).toBeTruthy();
+
+    const missingRes = await request(vercelHandler).get("/api/does-not-exist");
+    expect(missingRes.status).toBe(404);
+    expect(missingRes.body.error).toMatch(/Route not found/i);
   });
 });

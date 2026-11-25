@@ -20,6 +20,19 @@ export function clearWalletSession(walletAddress) {
   }
 }
 
+function extractErrorMessage(data, res, fallback) {
+  if (typeof data?.error === "string" && data.error.trim()) {
+    return data.error;
+  }
+  if (typeof data?.error?.message === "string" && data.error.message.trim()) {
+    return data.error.message;
+  }
+  if (typeof data?.message === "string" && data.message.trim()) {
+    return data.message;
+  }
+  return `${fallback} (HTTP ${res.status})`;
+}
+
 async function safeFetchJson(path, fetchOptions = {}, timeoutMs = 20_000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -36,7 +49,7 @@ async function safeFetchJson(path, fetchOptions = {}, timeoutMs = 20_000) {
     }
     if (err instanceof TypeError || /failed to fetch/i.test(err?.message || "")) {
       throw new Error(
-        `Cannot reach backend API (${API_BASE_URL}). Make sure the backend server is running and CORS allows this origin.`
+        `Cannot reach backend API (${API_BASE_URL || "same-origin"}). Make sure the backend server is running and CORS allows this origin.`
       );
     }
     throw err;
@@ -74,7 +87,9 @@ export async function ensureWalletSession(wallet) {
       }
     );
     if (!challengeRes.ok) {
-      throw new Error(challengeData.error || "Failed to start wallet sign-in");
+      throw new Error(
+        extractErrorMessage(challengeData, challengeRes, "Failed to start wallet sign-in")
+      );
     }
 
     const messageBytes = new TextEncoder().encode(challengeData.message);
@@ -93,7 +108,13 @@ export async function ensureWalletSession(wallet) {
       }
     );
     if (!verifyRes.ok) {
-      throw new Error(verifyData.error || "Wallet signature verification failed");
+      throw new Error(
+        extractErrorMessage(
+          verifyData,
+          verifyRes,
+          "Wallet signature verification failed"
+        )
+      );
     }
 
     sessionCache.set(walletAddress, {
@@ -139,7 +160,7 @@ async function request(path, options = {}, wallet = null) {
   }
 
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
+    throw new Error(extractErrorMessage(data, res, "Request failed"));
   }
   return data;
 }
