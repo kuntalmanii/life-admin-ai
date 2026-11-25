@@ -8,6 +8,7 @@ const mockConfirmTransaction = vi.fn();
 const mockFetchVerifierTasks = vi.fn();
 const mockApproveCommitment = vi.fn();
 const mockRejectCommitment = vi.fn();
+const mockVerifyProofAI = vi.fn();
 const mockFetchIpfsJson = vi.fn();
 const mockSystemTransfer = vi.fn((params) => ({ type: "transfer", params }));
 
@@ -52,6 +53,7 @@ vi.mock("../../src/services/api", () => ({
   fetchVerifierTasks: (...args) => mockFetchVerifierTasks(...args),
   approveCommitment: (...args) => mockApproveCommitment(...args),
   rejectCommitment: (...args) => mockRejectCommitment(...args),
+  verifyProofAI: (...args) => mockVerifyProofAI(...args),
 }));
 
 vi.mock("../../src/utils/ipfsCache", () => ({
@@ -80,6 +82,16 @@ describe("VerifierDashboard modals and actions", () => {
     mockConfirmTransaction.mockResolvedValue({ value: { err: null } });
     mockApproveCommitment.mockResolvedValue({ success: true });
     mockRejectCommitment.mockResolvedValue({ success: true });
+    mockVerifyProofAI.mockResolvedValue({
+      assessment: {
+        verdict: "LIKELY_VALID",
+        confidence: 88,
+        summary: "Verified completion details and evidence.",
+        matchedCriteria: ["Includes verifiable URL"],
+        redFlags: [],
+        provider: "local-heuristic",
+      },
+    });
     mockFetchIpfsJson.mockResolvedValue({
       description: "Finished 5km on Strava",
       submittedAt: "2026-11-25T10:00:00.000Z",
@@ -223,6 +235,32 @@ describe("VerifierDashboard modals and actions", () => {
         expect.stringContaining("Refund sent on-chain (TxRefund"),
         "error"
       );
+    });
+  });
+
+  it("renders AI assessment and allows on-demand AI Audit from Proof Details modal", async () => {
+    const user = userEvent.setup();
+    render(
+      <VerifierDashboard walletAddress={verifierAddress} onNotify={vi.fn()} />
+    );
+
+    const viewBtn = await screen.findByRole("button", {
+      name: /view proof metadata/i,
+    });
+    await user.click(viewBtn);
+
+    const auditBtn = await screen.findByRole("button", { name: /run ai audit/i });
+    await user.click(auditBtn);
+
+    await waitFor(() => {
+      expect(mockVerifyProofAI).toHaveBeenCalledWith(
+        {
+          mintAddress: "MintProof111111111111111111111111111111111",
+          proofDescription: "Finished 5km on Strava",
+        },
+        expect.any(Object)
+      );
+      expect(screen.getAllByText(/88% confidence/i).length).toBeGreaterThanOrEqual(1);
     });
   });
 });

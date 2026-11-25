@@ -15,6 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import SubmitProof from "./SubmitProof";
+import AiAssessmentBadge from "./AiAssessmentBadge";
 import { SOLANA_NETWORK } from "../config";
 import {
   computeElapsedPercent,
@@ -151,9 +152,16 @@ function CommitmentCard({ r, nowMs, onRefresh, onNotify }) {
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
-          <h3 className="font-bold text-slate-100 text-sm leading-snug line-clamp-2 flex-1">
-            {r.service}
-          </h3>
+          <div className="flex-1 min-w-0">
+            {r.category && (
+              <span className="inline-block mb-1 text-[10px] font-bold uppercase tracking-wider text-indigo-200/90">
+                {r.category}
+              </span>
+            )}
+            <h3 className="font-bold text-slate-100 text-sm leading-snug line-clamp-2">
+              {r.service}
+            </h3>
+          </div>
           <StatusBadge status={r.status} />
         </div>
 
@@ -235,6 +243,13 @@ function CommitmentCard({ r, nowMs, onRefresh, onNotify }) {
         ) : r.status === "FAILED" ? (
           <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-rose-400/10 border border-rose-400/25 text-rose-200">
             <Flame size={15} aria-hidden="true" /> Stake Burned
+          </div>
+        ) : r.status === "PROOF_SUBMITTED" ? (
+          <div>
+            <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-sky-300/10 border border-sky-300/25 text-sky-200">
+              <Zap size={15} aria-hidden="true" /> Proof Under Review
+            </div>
+            <AiAssessmentBadge assessment={r.aiAssessment} compact />
           </div>
         ) : (
           <SubmitProof

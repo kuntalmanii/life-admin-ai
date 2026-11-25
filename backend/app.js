@@ -29,6 +29,7 @@ import {
 } from "./mailer.js";
 import { refundStake } from "./refundStake.js";
 import { verifyNftOwnership, verifySolTransfer } from "./solanaVerify.js";
+import { planCommitmentWithAI, verifyProofWithAI } from "./ai.js";
 
 const normalize = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -50,6 +51,8 @@ export function createApp(deps = {}) {
     sendEmailFn = sendEmail,
     refundStakeFn = refundStake,
     runReminderCheckFn = runReminderCheck,
+    planCommitmentWithAIFn = planCommitmentWithAI,
+    verifyProofWithAIFn = verifyProofWithAI,
     pinataJwt = PINATA_JWT,
     allowServerRefund = ALLOW_SERVER_REFUND,
     enableTestEmail = ENABLE_TEST_EMAIL,
@@ -207,6 +210,73 @@ export function createApp(deps = {}) {
     })
   );
 
+  /* ---------------- AI COPILOT ---------------- */
+
+  app.post(
+    "/api/ai/plan",
+    strictLimiter,
+    requireWalletAuth,
+    asyncHandler(async (req, res) => {
+      const goal = normalize(req.body?.goal);
+      if (!goal || goal.length > 500) {
+        return res.status(400).json({ error: "Commitment goal (1-500 chars) is required" });
+      }
+      const plan = await planCommitmentWithAIFn({
+        goal,
+        deadline: normalize(req.body?.deadline),
+        stake: req.body?.stake,
+      });
+      res.json(plan);
+    })
+  );
+
+  app.post(
+    "/api/ai/verify-proof",
+    strictLimiter,
+    requireWalletAuth,
+    asyncHandler(async (req, res) => {
+      const mint = normalize(req.body?.mintAddress);
+      if (!isValidPublicKey(mint)) {
+        return res.status(400).json({ error: "Valid mintAddress is required" });
+      }
+
+      const item = readDB(dbPath).find((x) => x.mintAddress === mint);
+      if (!item) {
+        return res.status(404).json({ error: "Commitment not found" });
+      }
+
+      const isAuthorized =
+        req.authWallet === verifierWallet || req.authWallet === item.owner;
+      if (!isAuthorized) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const proofDescription =
+        normalize(req.body?.proofDescription) || normalize(item.proofDescription);
+      if (!proofDescription) {
+        return res.status(400).json({ error: "Proof description is required for AI audit" });
+      }
+
+      const assessment = await verifyProofWithAIFn({
+        goal: item.service,
+        proofCriteria: item.proofCriteria || "",
+        proofDescription,
+        renewalDate: item.renewalDate,
+        submittedAt: item.proofSubmittedAt || new Date().toISOString(),
+      });
+
+      await updateDB((db) => {
+        const target = db.find((x) => x.mintAddress === mint);
+        if (!target) return false;
+        target.proofDescription = proofDescription;
+        target.aiAssessment = assessment;
+        return db;
+      }, dbPath);
+
+      res.json({ assessment });
+    })
+  );
+
   /* ---------------- COMMITMENTS ---------------- */
 
   app.get("/api/commitments", requireWalletAuth, (req, res) => {
@@ -234,6 +304,8 @@ export function createApp(deps = {}) {
         stake,
         verifier,
         stakeSignature,
+        category,
+        proofCriteria,
       } = req.body;
 
       const owner = req.authWallet;
@@ -287,6 +359,9 @@ export function createApp(deps = {}) {
       let conflictError = null;
       let alreadyTracked = false;
 
+      const cleanCategory = normalize(category).slice(0, 64);
+      const cleanProofCriteria = normalize(proofCriteria).slice(0, 300);
+
       await updateDB((db) => {
         if (db.find((x) => x.mintAddress === mint)) {
           alreadyTracked = true;
@@ -306,6 +381,8 @@ export function createApp(deps = {}) {
           metadataUri: uri,
           stakeSignature: sig,
           service: finalService,
+          category: cleanCategory || undefined,
+          proofCriteria: cleanProofCriteria || undefined,
           renewalDate: finalDeadline,
           stakeAmount: finalStake,
           status: "PENDING",
@@ -356,9 +433,10 @@ export function createApp(deps = {}) {
     strictLimiter,
     requireWalletAuth,
     asyncHandler(async (req, res) => {
-      const { mintAddress, proofCid, submittedBy, recovery } = req.body;
+      const { mintAddress, proofCid, submittedBy, recovery, proofDescription } = req.body;
       const mint = normalize(mintAddress);
       const cid = normalize(proofCid);
+      const cleanDescription = normalize(proofDescription).slice(0, 1000);
       const actor = req.authWallet;
 
       if (submittedBy && submittedBy !== actor) {
@@ -397,6 +475,24 @@ export function createApp(deps = {}) {
         }
       }
 
+      const submittedAt = new Date().toISOString();
+      const targetGoal = existing ? existing.service : normalize(recovery?.service);
+      const targetCriteria = existing
+        ? existing.proofCriteria || ""
+        : normalize(recovery?.proofCriteria);
+      const targetDeadline = existing ? existing.renewalDate : recovery?.deadline;
+
+      let aiAssessment = null;
+      if (cleanDescription) {
+        aiAssessment = await verifyProofWithAIFn({
+          goal: targetGoal,
+          proofCriteria: targetCriteria,
+          proofDescription: cleanDescription,
+          renewalDate: targetDeadline,
+          submittedAt,
+        }).catch(() => null);
+      }
+
       let statusCode = 200;
       let errorMessage = null;
 
@@ -410,10 +506,11 @@ export function createApp(deps = {}) {
             verifier: verifierWallet,
             metadataUri: "recovered-from-chain",
             service: normalize(recovery.service),
+            proofCriteria: targetCriteria || undefined,
             renewalDate: recovery.deadline,
             stakeAmount: recoveryStake,
             status: "PENDING",
-            createdAt: new Date().toISOString(),
+            createdAt: submittedAt,
             lastNotified: null,
           };
           db.push(item);
@@ -428,8 +525,10 @@ export function createApp(deps = {}) {
         }
 
         item.proofCid = cid;
+        if (cleanDescription) item.proofDescription = cleanDescription;
+        if (aiAssessment) item.aiAssessment = aiAssessment;
         item.status = "PROOF_SUBMITTED";
-        item.proofSubmittedAt = new Date().toISOString();
+        item.proofSubmittedAt = submittedAt;
         return db;
       }, dbPath);
 
@@ -437,7 +536,7 @@ export function createApp(deps = {}) {
         return res.status(statusCode).json({ error: errorMessage });
       }
 
-      res.json({ success: true });
+      res.json({ success: true, aiAssessment });
     })
   );
 

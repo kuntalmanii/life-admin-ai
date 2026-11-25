@@ -16,16 +16,19 @@ import {
   User,
   Calendar,
   DollarSign,
+  Sparkles,
 } from "lucide-react";
 import {
   approveCommitment,
   fetchVerifierTasks,
   rejectCommitment,
+  verifyProofAI,
 } from "../services/api";
 import { useAccessibleModal } from "../hooks/useAccessibleModal";
 import { isCommitmentExpired, resolveIpfsUrl } from "../utils/format";
 import { fetchIpfsJson } from "../utils/ipfsCache";
 import ConfirmModal from "./ConfirmModal";
+import AiAssessmentBadge from "./AiAssessmentBadge";
 
 export default function VerifierDashboard({ walletAddress, onNotify }) {
   const { connection } = useConnection();
@@ -41,6 +44,7 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
   const [processing, setProcessing] = useState(null);
   const [viewingProof, setViewingProof] = useState(null);
   const [fetchingProof, setFetchingProof] = useState(null);
+  const [auditingMint, setAuditingMint] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
 
   const closeProofModal = useCallback(() => setViewingProof(null), []);
@@ -143,11 +147,19 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
     }
   };
 
-  const fetchAndShowProof = async (cid) => {
+  const fetchAndShowProof = async (task) => {
+    const cid = task?.proofCid;
+    if (!cid) return;
     try {
       setFetchingProof(cid);
       const data = await fetchIpfsJson(cid);
-      setViewingProof({ ...data, cid });
+      setViewingProof({
+        ...data,
+        cid,
+        mintAddress: task.mintAddress,
+        service: task.service,
+        aiAssessment: task.aiAssessment || null,
+      });
     } catch (e) {
       console.error("Failed to fetch proof", e);
       onNotify?.(
@@ -156,6 +168,35 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
       );
     } finally {
       setFetchingProof(null);
+    }
+  };
+
+  const runAiAudit = async (mintAddress, proofDescription) => {
+    if (!mintAddress || !proofDescription) return;
+    setAuditingMint(mintAddress);
+    try {
+      const { assessment } = await verifyProofAI(
+        { mintAddress, proofDescription },
+        walletRef.current
+      );
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.mintAddress === mintAddress
+            ? { ...t, aiAssessment: assessment, proofDescription }
+            : t
+        )
+      );
+      setViewingProof((prev) =>
+        prev?.mintAddress === mintAddress
+          ? { ...prev, aiAssessment: assessment }
+          : prev
+      );
+      onNotify?.(`AI Audit: ${assessment.verdict} (${assessment.confidence}%)`, "success");
+    } catch (err) {
+      console.error(err);
+      onNotify?.(err.message || "AI Audit failed", "error");
+    } finally {
+      setAuditingMint(null);
     }
   };
 
@@ -309,20 +350,25 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
                           </div>
 
                           {task.proofCid ? (
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => fetchAndShowProof(task.proofCid)}
-                                disabled={fetchingProof === task.proofCid}
-                                className="inline-flex items-center gap-2 transition-colors text-sm font-medium px-3.5 py-2 rounded-xl cursor-pointer bg-sky-300/10 border border-sky-300/24 text-sky-200 hover:bg-sky-300/15"
-                              >
-                                {fetchingProof === task.proofCid ? (
-                                  <RefreshCw className="animate-spin" size={15} aria-hidden="true" />
-                                ) : (
-                                  <FileText size={15} aria-hidden="true" />
-                                )}
-                                View Proof Metadata
-                              </button>
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => fetchAndShowProof(task)}
+                                  disabled={fetchingProof === task.proofCid}
+                                  className="inline-flex items-center gap-2 transition-colors text-sm font-medium px-3.5 py-2 rounded-xl cursor-pointer bg-sky-300/10 border border-sky-300/24 text-sky-200 hover:bg-sky-300/15"
+                                >
+                                  {fetchingProof === task.proofCid ? (
+                                    <RefreshCw className="animate-spin" size={15} aria-hidden="true" />
+                                  ) : (
+                                    <FileText size={15} aria-hidden="true" />
+                                  )}
+                                  View Proof Metadata
+                                </button>
+                              </div>
+                              {task.aiAssessment && (
+                                <AiAssessmentBadge assessment={task.aiAssessment} />
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 text-sm italic">
@@ -481,6 +527,30 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
                     {viewingProof.description || "No description provided."}
                   </p>
                 </div>
+
+                {viewingProof.aiAssessment && (
+                  <AiAssessmentBadge assessment={viewingProof.aiAssessment} />
+                )}
+
+                {viewingProof.mintAddress && viewingProof.description && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={auditingMint === viewingProof.mintAddress}
+                      onClick={() =>
+                        runAiAudit(viewingProof.mintAddress, viewingProof.description)
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50 bg-indigo-400/12 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-400/20"
+                    >
+                      {auditingMint === viewingProof.mintAddress ? (
+                        <RefreshCw size={12} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Sparkles size={12} aria-hidden="true" />
+                      )}
+                      {viewingProof.aiAssessment ? "Re-run AI Audit" : "Run AI Audit"}
+                    </button>
+                  </div>
+                )}
 
                 {viewingProof.image && (
                   <div className="rounded-2xl overflow-hidden border border-slate-800 mt-4">

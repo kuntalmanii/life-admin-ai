@@ -57,4 +57,50 @@ describe("CommitmentForm", () => {
       email: "user@example.com",
     });
   });
+
+  it("structures goals with AI Coach and applies suggested criteria on submit", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    const onAnalyzeGoal = vi.fn(async () => ({
+      category: "Finance & Bills",
+      refinedGoal: "Pay monthly electricity bill",
+      proofCriteria: "Payment receipt ID or bank confirmation link",
+      checklist: ["Log in to utility portal", "Save payment confirmation ID"],
+      suggestedStake: "0.5",
+      suggestedDeadline: "2027-01-15T18:00",
+      riskNote: "Attach receipt ID before cutoff.",
+      provider: "local-heuristic",
+    }));
+
+    render(
+      <CommitmentForm
+        onCommit={onCommit}
+        onAnalyzeGoal={onAnalyzeGoal}
+        loading={false}
+      />
+    );
+
+    await user.type(screen.getByLabelText(/i promise to/i), "pay electricity bill");
+    await user.click(
+      screen.getByRole("button", { name: /analyze commitment goal with ai coach/i })
+    );
+
+    const region = await screen.findByRole("region", {
+      name: /ai coach recommendations/i,
+    });
+    expect(region).toHaveTextContent("Finance & Bills");
+    expect(region).toHaveTextContent(/Payment receipt ID/i);
+
+    await user.click(screen.getByRole("button", { name: /apply suggestions/i }));
+    await user.click(screen.getByRole("button", { name: /lock funds & commit/i }));
+
+    expect(onCommit).toHaveBeenCalledWith({
+      goal: "Pay monthly electricity bill",
+      deadline: "2027-01-15T18:00",
+      stake: "0.5",
+      email: "",
+      category: "Finance & Bills",
+      proofCriteria: "Payment receipt ID or bank confirmation link",
+    });
+  });
 });

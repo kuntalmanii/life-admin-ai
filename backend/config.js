@@ -26,6 +26,8 @@ export const ESCROW_KEYPAIR_PATH = process.env.ESCROW_KEYPAIR_PATH
   : path.resolve(__dirname, "..", "escrow.json");
 
 export const PINATA_JWT = process.env.PINATA_JWT || "";
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 export const ALLOW_SERVER_REFUND = process.env.ALLOW_SERVER_REFUND === "true";
 export const ENABLE_TEST_EMAIL = process.env.ENABLE_TEST_EMAIL === "true";
 

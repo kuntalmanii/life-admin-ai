@@ -4,6 +4,7 @@ import { uploadMetadataToIPFS } from "../ipfs/uploadMetadata";
 import {
   clearWalletSession,
   fetchCommitments,
+  planCommitmentAI,
   trackCommitment,
 } from "../services/api";
 import { isCommitmentExpired, sortCommitments } from "../utils/format";
@@ -20,11 +21,14 @@ function mapDbRecord(record, isDbOnly = false) {
   return {
     mint: record.mintAddress,
     service: record.service,
+    category: record.category || null,
+    proofCriteria: record.proofCriteria || null,
     deadline: record.renewalDate,
     createdAt: record.createdAt,
     stake: record.stakeAmount,
     status: derivedStatus,
     proofCid: record.proofCid || null,
+    aiAssessment: record.aiAssessment || null,
     isTracked: true,
     isDbOnly,
   };
@@ -45,12 +49,15 @@ async function hydrateOnChainNft(nft, dbCommitments) {
     return {
       mint,
       service: meta.goal || meta.service || "Unknown Goal",
+      category: meta.category || null,
+      proofCriteria: meta.proofCriteria || null,
       deadline,
       createdAt: meta.createdAt || null,
       stake: meta.stake || meta.stakeAmount,
       status: isCommitmentExpired(deadline) ? "FAILED" : "ON_CHAIN_ONLY",
       isTracked: false,
       proofCid: null,
+      aiAssessment: null,
     };
   } catch (err) {
     console.error("Failed to hydrate NFT", mint, err);
@@ -158,8 +165,12 @@ export function useCommitments(walletContext) {
     }
   }, [ownerAddress, notify]);
 
+  const analyzeGoal = useCallback(async ({ goal, deadline, stake }) => {
+    return planCommitmentAI({ goal, deadline, stake }, walletRef.current);
+  }, []);
+
   const handleCommit = useCallback(
-    async ({ goal, deadline, stake, email }) => {
+    async ({ goal, deadline, stake, email, category, proofCriteria }) => {
       if (!ownerAddress) return;
 
       const activeWallet = walletRef.current;
@@ -172,6 +183,8 @@ export function useCommitments(walletContext) {
         const metadata = {
           type: "commitment_v1",
           goal,
+          ...(category ? { category } : {}),
+          ...(proofCriteria ? { proofCriteria } : {}),
           deadline,
           stake,
           owner: ownerAddress,
@@ -201,6 +214,8 @@ export function useCommitments(walletContext) {
             email,
             metadataUri: ipfsUri,
             service: goal,
+            ...(category ? { category } : {}),
+            ...(proofCriteria ? { proofCriteria } : {}),
             renewalDate: deadline,
             verifier: VERIFIER_WALLET,
             status: "PENDING",
@@ -215,11 +230,14 @@ export function useCommitments(walletContext) {
         const optimisticItem = {
           mint: mintAddress,
           service: goal,
+          category: category || null,
+          proofCriteria: proofCriteria || null,
           deadline,
           createdAt,
           stake,
           status: "PENDING",
           proofCid: null,
+          aiAssessment: null,
           isTracked: true,
           isDbOnly: true,
         };
@@ -269,5 +287,6 @@ export function useCommitments(walletContext) {
     notify,
     loadMyCommitments,
     handleCommit,
+    analyzeGoal,
   };
 }

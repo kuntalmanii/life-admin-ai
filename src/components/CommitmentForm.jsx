@@ -11,6 +11,9 @@ import {
   Sparkles,
   Info,
   AlertCircle,
+  Wand2,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { formatUsdEstimate } from "../utils/format";
 
@@ -41,7 +44,7 @@ function InputWrapper({ htmlFor, label, icon, children }) {
   );
 }
 
-export default function CommitmentForm({ onCommit, loading }) {
+export default function CommitmentForm({ onCommit, onAnalyzeGoal, loading }) {
   const baseId = useId();
   const goalId = `${baseId}-goal`;
   const deadlineId = `${baseId}-deadline`;
@@ -57,12 +60,55 @@ export default function CommitmentForm({ onCommit, loading }) {
   const [deadline, setDeadline] = useState("");
   const [stake, setStake] = useState("0.1");
   const [email, setEmail] = useState("");
+  const [category, setCategory] = useState("");
+  const [proofCriteria, setProofCriteria] = useState("");
+  const [aiPlan, setAiPlan] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [shake, setShake] = useState(false);
   const [focused, setFocused] = useState(null);
   const [errors, setErrors] = useState({});
   const [errorSummary, setErrorSummary] = useState("");
 
   const usd = formatUsdEstimate(stake, 2);
+
+  const handleAnalyze = async () => {
+    if (!goal.trim()) {
+      setErrors((prev) => ({ ...prev, goal: true }));
+      setErrorSummary("Enter a commitment goal before running AI Coach.");
+      goalRef.current?.focus();
+      return;
+    }
+    if (!onAnalyzeGoal) return;
+
+    setErrors((prev) => ({ ...prev, goal: false }));
+    setErrorSummary("");
+    setAnalyzing(true);
+    try {
+      const plan = await onAnalyzeGoal({
+        goal: goal.trim(),
+        deadline,
+        stake,
+      });
+      setAiPlan(plan);
+      if (plan?.category) setCategory(plan.category);
+      if (plan?.proofCriteria) setProofCriteria(plan.proofCriteria);
+    } catch (err) {
+      setErrorSummary(err?.message || "AI planning unavailable right now.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleApplyPlan = () => {
+    if (!aiPlan) return;
+    if (aiPlan.refinedGoal) setGoal(aiPlan.refinedGoal);
+    if (aiPlan.suggestedStake) setStake(String(aiPlan.suggestedStake));
+    if (!deadline && aiPlan.suggestedDeadline) setDeadline(aiPlan.suggestedDeadline);
+    if (aiPlan.category) setCategory(aiPlan.category);
+    if (aiPlan.proofCriteria) setProofCriteria(aiPlan.proofCriteria);
+    setErrors({});
+    setErrorSummary("");
+  };
 
   const handleSubmit = (event) => {
     event?.preventDefault?.();
@@ -94,7 +140,14 @@ export default function CommitmentForm({ onCommit, loading }) {
 
     setErrors({});
     setErrorSummary("");
-    onCommit({ goal: goal.trim(), deadline, stake, email: email.trim() });
+    onCommit({
+      goal: goal.trim(),
+      deadline,
+      stake,
+      email: email.trim(),
+      ...(category ? { category } : {}),
+      ...(proofCriteria ? { proofCriteria } : {}),
+    });
   };
 
   return (
@@ -182,6 +235,68 @@ export default function CommitmentForm({ onCommit, loading }) {
                   </div>
                 )}
               </div>
+
+              {onAnalyzeGoal && (
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAnalyze}
+                    disabled={analyzing || loading}
+                    aria-label="Analyze commitment goal with AI Coach"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 bg-indigo-400/12 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-400/20"
+                  >
+                    {analyzing ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                        Analyzing with AI...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={12} aria-hidden="true" />
+                        AI Coach: Structure Goal
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {aiPlan && (
+                <div
+                  role="region"
+                  aria-live="polite"
+                  aria-label="AI Coach recommendations"
+                  className="rounded-2xl p-4 space-y-2.5 bg-indigo-400/[0.07] border border-indigo-400/25"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-200">
+                      <Sparkles size={12} aria-hidden="true" />
+                      {aiPlan.category}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleApplyPlan}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer bg-teal-400/15 border border-teal-400/30 text-teal-200 hover:bg-teal-400/25"
+                    >
+                      <CheckCircle2 size={11} aria-hidden="true" />
+                      Apply Suggestions
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-200">
+                    <strong className="text-slate-100">Proof Criteria:</strong>{" "}
+                    {aiPlan.proofCriteria}
+                  </p>
+                  {Array.isArray(aiPlan.checklist) && aiPlan.checklist.length > 0 && (
+                    <ul className="text-[11px] text-slate-300 space-y-0.5 list-disc list-inside">
+                      {aiPlan.checklist.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {aiPlan.riskNote && (
+                    <p className="text-[11px] text-indigo-200/90">{aiPlan.riskNote}</p>
+                  )}
+                </div>
+              )}
             </InputWrapper>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

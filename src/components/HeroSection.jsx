@@ -7,41 +7,41 @@ const FEATURES = [
     color: "#818cf8",
     icon: Lock,
     title: "Stake SOL",
-    description: "Lock real funds as collateral. No skin in the game, no commitment.",
+    description: "Turn procrastinated life-admin deadlines into backed on-chain promises.",
     delay: 0.65,
   },
   {
     color: "#2dd4bf",
     icon: Zap,
-    title: "Mint NFT",
-    description: "Your goal is minted as an NFT with deadline & stake metadata on-chain.",
+    title: "AI Goal Coach",
+    description: "AI structures messy tasks into measurable proof criteria before you stake.",
     delay: 0.7,
   },
   {
     color: "#7dd3fc",
     icon: Shield,
-    title: "Submit Proof",
-    description: "Upload evidence of completion for manual or AI-assisted verification.",
+    title: "AI Proof Copilot",
+    description: "Automated AI scoring evaluates completion evidence for fast verification.",
     delay: 0.75,
   },
   {
     color: "#a5b4fc",
     icon: TrendingUp,
     title: "Get Refunded",
-    description: "Approve → SOL is refunded. Fail → stake is forfeited. Simple.",
+    description: "Approve → SOL is refunded. Miss the deadline → stake is forfeited.",
     delay: 0.8,
   },
 ];
 
 const TICKER_ITEMS = [
   "Solana Testnet",
-  "NFT Commitments",
+  "AI Goal Coach",
+  "AI Proof Copilot",
   "SOL Staking",
-  "On-Chain Accountability",
+  "NFT Commitments",
   "IPFS Metadata",
   "Email Reminders",
-  "Manual Verification",
-  "Decentralized Reputation",
+  "SQLite WAL Persistence",
 ];
 
 function FeatureCard({ icon, title, description, color, delay }) {

@@ -192,3 +192,25 @@ export function rejectCommitment(payload, wallet) {
     wallet
   );
 }
+
+export function planCommitmentAI(payload, wallet) {
+  return request(
+    "/api/ai/plan",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    wallet
+  );
+}
+
+export function verifyProofAI(payload, wallet) {
+  return request(
+    "/api/ai/verify-proof",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    wallet
+  );
+}

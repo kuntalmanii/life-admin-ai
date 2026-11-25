@@ -37,6 +37,7 @@ function App() {
     notify,
     loadMyCommitments,
     handleCommit,
+    analyzeGoal,
   } = useCommitments(walletContext);
 
   const isVerifier = publicKey && publicKey.toBase58() === VERIFIER_WALLET;
@@ -96,6 +97,7 @@ function App() {
                   <CommitmentForm
                     key={formResetKey}
                     onCommit={handleCommit}
+                    onAnalyzeGoal={analyzeGoal}
                     loading={submitting}
                   />
                 </div>

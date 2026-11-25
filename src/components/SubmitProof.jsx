@@ -47,13 +47,15 @@ export default function SubmitProof({
       };
       const proofCid = await uploadMetadataToIPFS(proofMetadata, wallet);
 
-      await submitProofRequest(
+      const result = await submitProofRequest(
         {
           mintAddress,
           proofCid,
+          proofDescription: text.trim(),
           submittedBy: publicKey.toBase58(),
           recovery: {
             service: commitment?.service,
+            proofCriteria: commitment?.proofCriteria,
             stake: commitment?.stake,
             deadline: commitment?.deadline,
           },
@@ -63,7 +65,13 @@ export default function SubmitProof({
 
       setSuccess(true);
       setText("");
-      onNotify?.("Proof submitted for verification!", "success");
+      const confidence = result?.aiAssessment?.confidence;
+      onNotify?.(
+        Number.isFinite(confidence)
+          ? `Proof submitted! AI Copilot confidence: ${confidence}%`
+          : "Proof submitted for verification!",
+        "success"
+      );
 
       setTimeout(() => {
         setSuccess(false);
@@ -96,6 +104,11 @@ export default function SubmitProof({
 
   return (
     <div className="space-y-2.5">
+      {commitment?.proofCriteria && (
+        <p className="text-[11px] text-indigo-200/95 bg-indigo-400/[0.07] border border-indigo-400/20 rounded-xl px-3 py-2">
+          <strong>Expected Proof:</strong> {commitment.proofCriteria}
+        </p>
+      )}
       <label htmlFor={inputId} className="sr-only">
         Proof link or completion summary for {commitment?.service || "commitment"}
       </label>
