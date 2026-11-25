@@ -11,64 +11,78 @@ const dbCache = new Map();
 const writeQueues = new Map();
 
 function ensureDBSync(dbPath = DB_FILE) {
-  if (!fs.existsSync(dbPath)) {
-    fs.writeFileSync(dbPath, JSON.stringify([], null, 2));
+  const resolved = path.resolve(dbPath);
+  if (!fs.existsSync(resolved)) {
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.writeFileSync(resolved, JSON.stringify([], null, 2));
   }
+  return resolved;
 }
 
 async function ensureDBAsync(dbPath = DB_FILE) {
+  const resolved = path.resolve(dbPath);
   try {
-    await fsp.access(dbPath);
+    await fsp.access(resolved);
   } catch {
-    await fsp.writeFile(dbPath, JSON.stringify([], null, 2));
+    await fsp.mkdir(path.dirname(resolved), { recursive: true });
+    await fsp.writeFile(resolved, JSON.stringify([], null, 2));
   }
+  return resolved;
 }
 
 export function readDB(dbPath = DB_FILE) {
-  if (!dbCache.has(dbPath)) {
-    ensureDBSync(dbPath);
-    const raw = fs.readFileSync(dbPath, "utf-8");
+  const resolved = path.resolve(dbPath);
+  if (!dbCache.has(resolved)) {
+    ensureDBSync(resolved);
+    const raw = fs.readFileSync(resolved, "utf-8");
     const parsed = raw.trim() ? JSON.parse(raw) : [];
-    dbCache.set(dbPath, parsed);
+    dbCache.set(resolved, parsed);
   }
-  return structuredClone(dbCache.get(dbPath));
+  return structuredClone(dbCache.get(resolved));
 }
 
 async function readDBAsync(dbPath = DB_FILE) {
-  if (!dbCache.has(dbPath)) {
-    await ensureDBAsync(dbPath);
-    const raw = await fsp.readFile(dbPath, "utf-8");
+  const resolved = path.resolve(dbPath);
+  if (!dbCache.has(resolved)) {
+    await ensureDBAsync(resolved);
+    const raw = await fsp.readFile(resolved, "utf-8");
     const parsed = raw.trim() ? JSON.parse(raw) : [];
-    dbCache.set(dbPath, parsed);
+    dbCache.set(resolved, parsed);
   }
-  return structuredClone(dbCache.get(dbPath));
+  return structuredClone(dbCache.get(resolved));
 }
 
 async function writeDBAtomicAsync(data, dbPath = DB_FILE) {
-  await ensureDBAsync(dbPath);
-  const dir = path.dirname(dbPath);
-  const tmpPath = path.join(dir, `.${path.basename(dbPath)}.${process.pid}.tmp`);
-  await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2));
-  await fsp.rename(tmpPath, dbPath);
-  dbCache.set(dbPath, structuredClone(data));
+  const resolved = await ensureDBAsync(dbPath);
+  const dir = path.dirname(resolved);
+  const tmpPath = path.join(dir, `.${path.basename(resolved)}.${process.pid}.tmp`);
+  try {
+    await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2));
+    await fsp.rename(tmpPath, resolved);
+    dbCache.set(resolved, structuredClone(data));
+  } catch (err) {
+    await fsp.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
 }
 
 /**
  * Safely reads, transforms, and atomically writes the JSON database without blocking the event loop.
  */
 export function updateDB(mutator, dbPath = DB_FILE) {
-  const previous = writeQueues.get(dbPath) || Promise.resolve();
+  const resolved = path.resolve(dbPath);
+  const previous = writeQueues.get(resolved) || Promise.resolve();
   const next = previous.then(async () => {
-    const db = await readDBAsync(dbPath);
+    const db = await readDBAsync(resolved);
     const result = await mutator(db);
     if (result !== false) {
-      await writeDBAtomicAsync(Array.isArray(result) ? result : db, dbPath);
+      await writeDBAtomicAsync(Array.isArray(result) ? result : db, resolved);
     }
     return result;
   });
 
   writeQueues.set(
-    dbPath,
+    resolved,
     next.catch(() => {})
   );
 

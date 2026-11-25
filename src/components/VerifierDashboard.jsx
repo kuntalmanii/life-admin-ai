@@ -33,6 +33,8 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
 
   const proofTitleId = useId();
   const proofDialogRef = useRef(null);
+  const walletRef = useRef(wallet);
+  walletRef.current = wallet;
 
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,10 +47,11 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
   useAccessibleModal(Boolean(viewingProof), closeProofModal, proofDialogRef);
 
   const loadTasks = useCallback(async () => {
-    if (!walletAddress || !wallet?.publicKey) return;
+    const activeWallet = walletRef.current;
+    if (!walletAddress || !activeWallet?.publicKey) return;
     setLoading(true);
     try {
-      const data = await fetchVerifierTasks(walletAddress, wallet);
+      const data = await fetchVerifierTasks(walletAddress, activeWallet);
       setTasks(data || []);
     } catch (e) {
       console.error("Failed to load verifier tasks", e);
@@ -56,30 +59,39 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
     } finally {
       setLoading(false);
     }
-  }, [walletAddress, wallet, onNotify]);
+  }, [walletAddress, onNotify]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
 
   const executeApprove = async (task) => {
-    if (!wallet.connected || !wallet.publicKey) {
+    const activeWallet = walletRef.current;
+    if (!activeWallet?.connected || !activeWallet?.publicKey) {
       onNotify?.("Please connect the Admin Wallet first.", "error");
       return;
     }
 
+    const lamports = Math.round(Number(task.stakeAmount) * LAMPORTS_PER_SOL);
+    if (!Number.isFinite(lamports) || lamports <= 0) {
+      onNotify?.("Invalid stake amount on task.", "error");
+      return;
+    }
+
     setProcessing(task.mintAddress);
+    let sentSignature = null;
     try {
       const transaction = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: wallet.publicKey,
+          fromPubkey: activeWallet.publicKey,
           toPubkey: new PublicKey(task.owner),
-          lamports: Math.floor(Number(task.stakeAmount) * LAMPORTS_PER_SOL),
+          lamports,
         })
       );
 
-      const signature = await wallet.sendTransaction(transaction, connection);
+      const signature = await activeWallet.sendTransaction(transaction, connection);
       await connection.confirmTransaction(signature, "confirmed");
+      sentSignature = signature;
 
       await approveCommitment(
         {
@@ -88,7 +100,7 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
           txSignature: signature,
           clientSide: true,
         },
-        wallet
+        activeWallet
       );
 
       onNotify?.(
@@ -98,7 +110,14 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
       loadTasks();
     } catch (err) {
       console.error(err);
-      onNotify?.(`Approval failed: ${err.message || err}`, "error");
+      if (sentSignature) {
+        onNotify?.(
+          `Refund sent on-chain (${sentSignature.slice(0, 8)}...) but failed to record approval: ${err.message || err}`,
+          "error"
+        );
+      } else {
+        onNotify?.(`Approval failed: ${err.message || err}`, "error");
+      }
     } finally {
       setProcessing(null);
     }
@@ -112,7 +131,7 @@ export default function VerifierDashboard({ walletAddress, onNotify }) {
           mintAddress: task.mintAddress,
           verifier: walletAddress,
         },
-        wallet
+        walletRef.current
       );
       onNotify?.("Proof rejected. Stake forfeited.", "success");
       loadTasks();

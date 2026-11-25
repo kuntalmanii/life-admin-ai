@@ -24,7 +24,12 @@ const NAV_LINKS = [
   },
   {
     label: "Docs",
-    action: () => window.open("https://github.com/", "_blank", "noopener,noreferrer"),
+    action: () =>
+      window.open(
+        "https://github.com/kuntalmanii/life-admin-ai#readme",
+        "_blank",
+        "noopener,noreferrer"
+      ),
     external: true,
   },
 ];
@@ -121,7 +126,7 @@ export default function Header() {
 
           <div className="hidden md:flex items-center gap-1">
             <a
-              href="https://github.com/"
+              href="https://github.com/kuntalmanii/life-admin-ai"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Life Admin AI on GitHub"

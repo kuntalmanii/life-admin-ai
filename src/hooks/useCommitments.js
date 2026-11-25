@@ -108,17 +108,22 @@ export function useCommitments(walletContext) {
     }
   }, []);
 
+  const ownerAddress = publicKey?.toBase58?.() || null;
+  const walletRef = useRef(walletContext);
+  walletRef.current = walletContext;
+  const refreshTimerRef = useRef(null);
+
   const loadMyCommitments = useCallback(async () => {
-    if (!publicKey) return;
+    if (!ownerAddress) return;
     setLoadingData(true);
 
     try {
-      const ownerAddress = publicKey.toBase58();
+      const activeWallet = walletRef.current;
 
       // Dynamic import keeps Metaplex SDK out of the disconnected initial bundle
       const [{ fetchMyReminderNFTs }, dbCommitments] = await Promise.all([
         import("../solana/fetchMyNFTs"),
-        fetchCommitments(walletContext).catch((e) => {
+        fetchCommitments(activeWallet).catch((e) => {
           console.warn("Backend sync skipped:", e.message);
           return [];
         }),
@@ -151,13 +156,13 @@ export function useCommitments(walletContext) {
     } finally {
       setLoadingData(false);
     }
-  }, [publicKey, walletContext, notify]);
+  }, [ownerAddress, notify]);
 
   const handleCommit = useCallback(
     async ({ goal, deadline, stake, email }) => {
-      if (!publicKey) return;
+      if (!ownerAddress) return;
 
-      const owner = publicKey.toBase58();
+      const activeWallet = walletRef.current;
       const createdAt = new Date().toISOString();
 
       try {
@@ -169,20 +174,20 @@ export function useCommitments(walletContext) {
           goal,
           deadline,
           stake,
-          owner,
+          owner: ownerAddress,
           verifier: VERIFIER_WALLET,
           status: "PENDING",
           createdAt,
         };
 
         const [ipfsUri, { createCommitment }] = await Promise.all([
-          uploadMetadataToIPFS(metadata, walletContext),
+          uploadMetadataToIPFS(metadata, activeWallet),
           import("../solana/createCommitment"),
         ]);
 
         notify(`Staking ${stake} SOL & minting contract...`, "loading", 0);
         const { mintAddress, stakeSignature } = await createCommitment(
-          walletContext,
+          activeWallet,
           ipfsUri,
           stake
         );
@@ -192,7 +197,7 @@ export function useCommitments(walletContext) {
           {
             mintAddress,
             stakeSignature,
-            owner,
+            owner: ownerAddress,
             email,
             metadataUri: ipfsUri,
             service: goal,
@@ -201,10 +206,11 @@ export function useCommitments(walletContext) {
             status: "PENDING",
             stakeAmount: stake,
           },
-          walletContext
+          activeWallet
         );
 
         notify("Commitment locked on-chain", "success", 2500);
+        setFormResetKey((prev) => prev + 1);
 
         const optimisticItem = {
           mint: mintAddress,
@@ -224,8 +230,9 @@ export function useCommitments(walletContext) {
             : [optimisticItem, ...prev]
         );
 
-        setTimeout(() => {
-          setFormResetKey((prev) => prev + 1);
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => {
+          refreshTimerRef.current = null;
           loadMyCommitments();
         }, 2000);
       } catch (err) {
@@ -235,7 +242,7 @@ export function useCommitments(walletContext) {
         setSubmitting(false);
       }
     },
-    [publicKey, walletContext, notify, loadMyCommitments]
+    [ownerAddress, notify, loadMyCommitments]
   );
 
   useEffect(() => {
@@ -245,6 +252,12 @@ export function useCommitments(walletContext) {
       clearWalletSession();
       setCommitments([]);
     }
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, [connected, loadMyCommitments]);
 
   return {

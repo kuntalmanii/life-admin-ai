@@ -83,17 +83,31 @@ export async function ensureWalletSession(wallet) {
 }
 
 async function request(path, options = {}, wallet = null) {
+  const { timeoutMs = 20_000, headers: customHeaders, ...fetchOptions } = options;
+
   const send = async (token) => {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-      ...options,
-    });
-    const data = await res.json().catch(() => ({}));
-    return { res, data };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        ...fetchOptions,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...customHeaders,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error("Request timed out");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   };
 
   let token = wallet ? await ensureWalletSession(wallet) : null;

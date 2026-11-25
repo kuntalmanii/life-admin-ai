@@ -71,19 +71,27 @@ export async function sendEmail({ to, subject, html, text, icalEvent }) {
 }
 
 export function generateICal({ service, start, end, description, url }) {
-  const formatDate = (date) =>
-    date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const formatDate = (date) => {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) {
+      throw new Error("Invalid calendar event date");
+    }
+    return d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  };
   const now = formatDate(new Date());
+  const uidSuffix =
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   return `
 BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Protocol.Commit//NONSGML v1.0//EN
 BEGIN:VEVENT
-UID:${Date.now()}@protocol.commit
+UID:${uidSuffix}@protocol.commit
 DTSTAMP:${now}
-DTSTART:${formatDate(new Date(start))}
-DTEND:${formatDate(new Date(end))}
+DTSTART:${formatDate(start)}
+DTEND:${formatDate(end)}
 SUMMARY:${sanitizeHeader(service)} (Protocol.Commit)
 DESCRIPTION:${sanitizeHeader(description)}
 URL:${sanitizeHeader(url)}

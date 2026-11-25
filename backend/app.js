@@ -32,6 +32,12 @@ import { verifyNftOwnership, verifySolTransfer } from "./solanaVerify.js";
 
 const normalize = (value) => (typeof value === "string" ? value.trim() : "");
 
+const isValidDateInput = (value) => {
+  if (typeof value !== "string" && !(value instanceof Date)) return false;
+  if (typeof value === "string" && !value.trim()) return false;
+  return Number.isFinite(new Date(value).getTime());
+};
+
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -151,8 +157,8 @@ export function createApp(deps = {}) {
         if (metadata.owner !== req.authWallet) {
           return res.status(403).json({ error: "Commitment owner mismatch" });
         }
-        if (!normalize(metadata.goal) || !metadata.deadline) {
-          return res.status(400).json({ error: "Missing commitment metadata" });
+        if (!normalize(metadata.goal) || !isValidDateInput(metadata.deadline)) {
+          return res.status(400).json({ error: "Missing or invalid commitment metadata" });
         }
       } else if (metadata.type === "commitment_proof") {
         if (!isValidPublicKey(metadata.mintAddress) || !normalize(metadata.description)) {
@@ -162,17 +168,30 @@ export function createApp(deps = {}) {
         return res.status(400).json({ error: "Unsupported metadata type" });
       }
 
-      const pinataRes = await fetch(
-        "https://api.pinata.cloud/pinning/pinJSONToIPFS",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${pinataJwt}`,
-          },
-          body: JSON.stringify(metadata),
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      let pinataRes;
+      try {
+        pinataRes = await fetch(
+          "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${pinataJwt}`,
+            },
+            body: JSON.stringify(metadata),
+          }
+        );
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          return res.status(504).json({ error: "IPFS pinning timed out" });
         }
-      );
+        throw err;
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!pinataRes.ok) {
         const errText = await pinataRes.text();
@@ -180,7 +199,10 @@ export function createApp(deps = {}) {
         return res.status(502).json({ error: "Failed to pin metadata to IPFS" });
       }
 
-      const data = await pinataRes.json();
+      const data = await pinataRes.json().catch(() => null);
+      if (!data || typeof data.IpfsHash !== "string" || !data.IpfsHash.trim()) {
+        return res.status(502).json({ error: "Invalid response from IPFS provider" });
+      }
       res.json({ ipfsUri: `ipfs://${data.IpfsHash}` });
     })
   );
@@ -238,7 +260,12 @@ export function createApp(deps = {}) {
       const finalService = normalize(service || goal);
       const finalStake = parseFloat(stakeAmount || stake || "0");
 
-      if (!finalService || !finalDeadline || !Number.isFinite(finalStake) || finalStake <= 0) {
+      if (
+        !finalService ||
+        !isValidDateInput(finalDeadline) ||
+        !Number.isFinite(finalStake) ||
+        finalStake <= 0
+      ) {
         return res.status(400).json({ error: "Invalid commitment details" });
       }
 
@@ -343,10 +370,23 @@ export function createApp(deps = {}) {
       }
 
       const existing = readDB(dbPath).find((x) => x.mintAddress === mint);
+      let recoveryStake = 0;
 
       if (!existing) {
-        if (!recovery?.service || !recovery?.deadline) {
+        const recoveryService = normalize(recovery?.service);
+        const recoveryDeadline = recovery?.deadline;
+        if (!recoveryService || !recoveryDeadline) {
           return res.status(404).json({ error: "Commitment not found" });
+        }
+        if (!isValidDateInput(recoveryDeadline)) {
+          return res.status(400).json({ error: "Invalid recovery deadline" });
+        }
+        const rawStake = recovery?.stake;
+        if (rawStake !== undefined && rawStake !== null && rawStake !== "") {
+          recoveryStake = Number(rawStake);
+          if (!Number.isFinite(recoveryStake) || recoveryStake < 0) {
+            return res.status(400).json({ error: "Invalid recovery stake amount" });
+          }
         }
         const nftCheck = await verifyNftOwnershipFn({
           mintAddress: mint,
@@ -371,7 +411,7 @@ export function createApp(deps = {}) {
             metadataUri: "recovered-from-chain",
             service: normalize(recovery.service),
             renewalDate: recovery.deadline,
-            stakeAmount: parseFloat(recovery.stake || "0"),
+            stakeAmount: recoveryStake,
             status: "PENDING",
             createdAt: new Date().toISOString(),
             lastNotified: null,
@@ -482,6 +522,10 @@ export function createApp(deps = {}) {
         }
         if (target.status !== "PROOF_SUBMITTED") {
           conflict = "Commitment already resolved";
+          return false;
+        }
+        if (finalSig && latestDb.some((x) => x.refundTx === finalSig)) {
+          conflict = "Refund transaction already used";
           return false;
         }
         target.status = "COMPLETED";

@@ -14,11 +14,17 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getParsedTransactionWithRetry(signature, attempts = 5) {
   for (let i = 0; i < attempts; i++) {
-    const tx = await connection.getParsedTransaction(signature, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
-    if (tx) return tx;
+    try {
+      const tx = await connection.getParsedTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+      if (tx) return tx;
+    } catch (err) {
+      if (i === attempts - 1) {
+        console.error("Failed to fetch transaction from Solana RPC:", err);
+      }
+    }
     if (i < attempts - 1) await sleep(1200);
   }
   return null;
@@ -58,11 +64,12 @@ export async function verifySolTransfer({
     return { valid: false, error: "On-chain transaction failed" };
   }
 
-  const minLamports = Math.floor(Number(minSol) * LAMPORTS_PER_SOL);
+  const minLamports = Math.round(Number(minSol) * LAMPORTS_PER_SOL);
   if (!Number.isFinite(minLamports) || minLamports <= 0) {
     return { valid: false, error: "Invalid expected stake amount" };
   }
 
+  const requiredLamports = Math.max(1, minLamports - 1);
   const matched = collectInstructions(tx).some((ix) => {
     const programId = ix?.programId?.toBase58?.() || "";
     const isSystem = ix?.program === "system" || programId === SYSTEM_PROGRAM_ID;
@@ -73,7 +80,7 @@ export async function verifySolTransfer({
     return (
       info.source === expectedFrom &&
       info.destination === expectedTo &&
-      lamports >= minLamports - 1
+      lamports >= requiredLamports
     );
   });
 

@@ -191,4 +191,38 @@ describe("VerifierDashboard modals and actions", () => {
       );
     });
   });
+
+  it("avoids duplicate initial loads, rounds fractional SOL lamports accurately, and surfaces partial refund errors", async () => {
+    const user = userEvent.setup();
+    const onNotify = vi.fn();
+    mockFetchVerifierTasks.mockResolvedValue([
+      {
+        ...sampleTasks[0],
+        stakeAmount: 0.57,
+      },
+    ]);
+    mockApproveCommitment.mockRejectedValueOnce(new Error("Session expired"));
+
+    render(
+      <VerifierDashboard walletAddress={verifierAddress} onNotify={onNotify} />
+    );
+
+    const approveBtn = await screen.findByRole("button", { name: /approve/i });
+    expect(mockFetchVerifierTasks).toHaveBeenCalledTimes(1);
+
+    await user.click(approveBtn);
+    await user.click(screen.getByRole("button", { name: "Approve & Refund" }));
+
+    await waitFor(() => {
+      expect(mockSystemTransfer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lamports: 570_000_000,
+        })
+      );
+      expect(onNotify).toHaveBeenCalledWith(
+        expect.stringContaining("Refund sent on-chain (TxRefund"),
+        "error"
+      );
+    });
+  });
 });

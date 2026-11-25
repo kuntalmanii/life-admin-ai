@@ -249,4 +249,66 @@ describe("Backend API Integration", () => {
     expect(queue.status).toBe(200);
     expect(queue.body).toEqual([]);
   });
+
+  it("rejects invalid deadlines and malformed recovery stakes", async () => {
+    const pinApp = createApp({
+      dbPath,
+      verifierWallet,
+      verifySolTransferFn,
+      verifyNftOwnershipFn,
+      sendEmailFn,
+      pinataJwt: "test-pinata-jwt",
+      suppressWarnings: true,
+    });
+    const pinToken = await authenticateWallet(pinApp, userKp);
+    const userToken = await authenticateWallet(app, userKp);
+    const mint = Keypair.generate().publicKey.toBase58();
+
+    const badPin = await request(pinApp)
+      .post("/api/ipfs/pin")
+      .set("Authorization", `Bearer ${pinToken}`)
+      .send({
+        metadata: {
+          type: "commitment_v1",
+          owner: userKp.publicKey.toBase58(),
+          goal: "Run 5km",
+          deadline: "not-a-valid-date",
+        },
+      });
+    expect(badPin.status).toBe(400);
+
+    const badTrack = await request(app)
+      .post("/api/track")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({
+        mintAddress: mint,
+        stakeSignature: "SigBadDate1111111111111111111111111111111111",
+        metadataUri: "ipfs://QmMeta",
+        service: "Run 5km",
+        renewalDate: "not-a-valid-date",
+        verifier: verifierWallet,
+        stakeAmount: 0.5,
+      });
+    expect(badTrack.status).toBe(400);
+
+    const badRecoveryDeadline = await request(app)
+      .post("/api/proof")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({
+        mintAddress: mint,
+        proofCid: "ipfs://QmProof",
+        recovery: { service: "Recovered", deadline: "invalid-date", stake: "0.2" },
+      });
+    expect(badRecoveryDeadline.status).toBe(400);
+
+    const badRecoveryStake = await request(app)
+      .post("/api/proof")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({
+        mintAddress: mint,
+        proofCid: "ipfs://QmProof",
+        recovery: { service: "Recovered", deadline: "2030-01-01T10:00", stake: "-1" },
+      });
+    expect(badRecoveryStake.status).toBe(400);
+  });
 });
